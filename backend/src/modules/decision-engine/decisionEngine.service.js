@@ -1,4 +1,5 @@
 import prisma from '../../config/prisma.js';
+import { findOrCreateCrop } from '../market/market.service.js';
 import { calculateBuyerTrustScore, calculateQualityMatch } from './buyerTrustScore.calculator.js';
 import { calculateNetRealisation } from './netRealisation.calculator.js';
 import { recommendSellTiming } from './sellTiming.recommender.js';
@@ -12,12 +13,7 @@ import { recommendSellTiming } from './sellTiming.recommender.js';
  *   5. Persist the query for a future feedback / training loop
  */
 export async function evaluateSellDecision(farmerId, input) {
-  const crop = await prisma.crop.findUnique({ where: { id: input.cropId } });
-  if (!crop) {
-    const err = new Error('Crop not found');
-    err.statusCode = 404;
-    throw err;
-  }
+  const crop = await findOrCreateCrop({ cropId: input.cropId, cropName: input.cropName });
 
   const farmer = farmerId
     ? await prisma.user.findUnique({ where: { id: farmerId } })

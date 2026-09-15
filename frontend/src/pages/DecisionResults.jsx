@@ -4,8 +4,10 @@ import DecisionCard from '../components/DecisionCard.jsx';
 import NetRealisationTable from '../components/NetRealisationTable.jsx';
 import PriceTrendChart from '../components/PriceTrendChart.jsx';
 import SellTimingBanner from '../components/SellTimingBanner.jsx';
+import { useI18n } from '../context/I18nContext.jsx';
 
 export default function DecisionResults() {
+  const { t } = useI18n();
   const result = useMemo(() => {
     const raw = sessionStorage.getItem('mm_last_decision');
     return raw ? JSON.parse(raw) : null;
@@ -13,10 +15,10 @@ export default function DecisionResults() {
 
   if (!result) {
     return (
-      <div className="rounded-2xl border border-dashed border-crop-200 bg-white p-8 text-center">
-        <p className="text-slate-600">No decision yet. Submit crop details first.</p>
-        <Link to="/decide" className="mt-3 inline-block font-semibold text-crop-700">
-          Go to sell decision form
+      <div className="rounded-2xl border border-dashed border-crop-200 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900">
+        <p className="text-slate-600 dark:text-slate-300">{t('results.empty')}</p>
+        <Link to="/decide" className="mt-3 inline-block font-semibold text-crop-700 dark:text-crop-300">
+          {t('results.goForm')}
         </Link>
       </div>
     );
@@ -27,14 +29,11 @@ export default function DecisionResults() {
   return (
     <div className="space-y-6">
       <div>
-        <p className="text-sm font-semibold uppercase tracking-wide text-crop-600">
-          {result.crop?.name} · {result.quantity} q · grade {result.qualityGrade}
+        <p className="text-sm font-semibold uppercase tracking-wide text-crop-600 dark:text-crop-300">
+          {result.crop?.name} · {result.quantity} q · {t('common.grade')} {result.qualityGrade}
         </p>
-        <h1 className="text-2xl font-bold text-crop-900">Your sell decision</h1>
-        <p className="text-sm text-slate-600">
-          Options are ranked by net realisation, not listed price. A high ticket far away can rank below a
-          slightly cheaper nearby buyer.
-        </p>
+        <h1 className="text-2xl font-bold text-crop-900 dark:text-crop-100">{t('results.title')}</h1>
+        <p className="text-sm text-slate-600 dark:text-slate-300">{t('results.subtitle')}</p>
       </div>
 
       <SellTimingBanner advice={result.sellTimingRecommendation} reasoning={result.reasoning} />
@@ -45,8 +44,8 @@ export default function DecisionResults() {
 
       <NetRealisationTable options={result.rankedOptions} />
 
-      <Link to="/decide" className="inline-block text-sm font-semibold text-crop-700">
-        ← Run another evaluation
+      <Link to="/decide" className="inline-block text-sm font-semibold text-crop-700 dark:text-crop-300">
+        {t('results.again')}
       </Link>
     </div>
   );

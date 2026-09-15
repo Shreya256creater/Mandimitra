@@ -89,18 +89,20 @@ Vite proxies `/api` to the backend, so no extra CORS setup is required in develo
 
 ## Demo accounts
 
-Password for all: `Password123!`
+Seeded by `backend/prisma/seed.js` (idempotent; passwords hashed with bcrypt, 10 rounds — same as register).
 
-| Email | Role |
-| --- | --- |
-| farmer@mandimitra.test | Farmer (Nashik onion lot) |
-| fpo@mandimitra.test | FPO lead |
-| buyer1@mandimitra.test | High-trust buyer |
-| admin@mandimitra.test | Admin |
+| Email | Password | Role |
+| --- | --- | --- |
+| farmer@mandimitra.com | Farmer@123 | Farmer (Unjha, Mehsana) |
+| buyer@mandimitra.com | Buyer@123 | Nearby high-trust buyer |
+| admin@mandimitra.com | Admin@123 | Admin |
+| fpo@mandimitra.com | Fpo@123 | FPO lead |
 
-Seed data includes 14 days of mandi prices. **Onion is trending up** (wait/split can appear if storage is on). **Wheat is trending down** (sell now).
+Extra buyers (`buyer.indore@…`, `buyer.ahmedabad@…`, `buyer.rajkot@…`, `buyer.surat@…`) all use `Buyer@123`. Indore posts the highest onion *listed* price; Unjha should still win on **net realisation** after transport.
 
-Walkthrough: login as the farmer → **Sell decision** → pick Onion, keep storage checked → read the timing banner, then the table ranked by net realisation.
+14-day mandi series: **Onion / Soybean** rising (wait or split if storage is on). **Wheat / Tomato / Maize** falling → sell now. **Cotton** flat → sell now.
+
+Walkthrough: login as the farmer → **Sell decision** → pick Onion, keep storage checked → timing banner + table ranked by net realisation.
 
 ## Main API routes
 

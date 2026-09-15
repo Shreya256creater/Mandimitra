@@ -2,351 +2,546 @@ import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
 
+/**
+ * Idempotent local-dev seed for MandiMitra.
+ *
+ * Compatible with the CURRENT Prisma schema only — no extra tables/fields.
+ * Safe to re-run: upserts by natural keys (email, mandiCode, crop name,
+ * marketId+cropId+date). Never calls deleteMany / migrate reset.
+ *
+ * Password hashing matches auth.service.js: bcrypt.hash(plain, 10).
+ */
+
 const prisma = new PrismaClient();
+const BCRYPT_ROUNDS = 10;
+const PRICE_DAYS = 14;
+const DEMO_TAG = '[DEMO-SEED]';
 
-const DAYS = 14;
-
-function daysAgo(n) {
+function utcDay(daysBack) {
   const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - n);
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() - daysBack);
   return d;
 }
 
-/**
- * Build a 14-day modal-price series.
- * @param {number} start
- * @param {number} dailyDelta  positive = rising market
- * @param {number} noise
- */
 function priceSeries(start, dailyDelta, noise = 8) {
-  return Array.from({ length: DAYS }, (_, i) => {
+  return Array.from({ length: PRICE_DAYS }, (_, i) => {
     const jitter = ((i * 7) % 5) - 2;
     return Math.round(start + dailyDelta * i + jitter * noise);
   });
 }
 
+async function upsertUser(data) {
+  const existing = await prisma.user.findUnique({ where: { email: data.email } });
+  if (existing) {
+    const { phone, email, ...rest } = data;
+    return prisma.user.update({
+      where: { email },
+      data: rest,
+    });
+  }
+  return prisma.user.create({ data });
+}
+
+async function upsertCrop(data) {
+  const existing = await prisma.crop.findFirst({ where: { name: data.name } });
+  if (existing) {
+    return prisma.crop.update({ where: { id: existing.id }, data });
+  }
+  return prisma.crop.create({ data });
+}
+
+async function upsertLot(data) {
+  const existing = await prisma.lot.findFirst({
+    where: { farmerId: data.farmerId, cropId: data.cropId, notes: data.notes },
+  });
+  if (existing) {
+    return prisma.lot.update({ where: { id: existing.id }, data });
+  }
+  return prisma.lot.create({ data });
+}
+
+async function upsertOpenOffer(data) {
+  const existing = await prisma.offer.findFirst({
+    where: { buyerId: data.buyerId, cropId: data.cropId, status: 'OPEN' },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (existing) {
+    return prisma.offer.update({ where: { id: existing.id }, data });
+  }
+  return prisma.offer.create({ data });
+}
+
 async function main() {
-  console.log('Seeding MandiMitra…');
+  console.log('Seeding MandiMitra (idempotent, no deletes)…');
 
-  await prisma.decisionQuery.deleteMany();
-  await prisma.grievance.deleteMany();
-  await prisma.transaction.deleteMany();
-  await prisma.offer.deleteMany();
-  await prisma.lot.deleteMany();
-  await prisma.fpoMember.deleteMany();
-  await prisma.fpo.deleteMany();
-  await prisma.marketPrice.deleteMany();
-  await prisma.market.deleteMany();
-  await prisma.buyer.deleteMany();
-  await prisma.crop.deleteMany();
-  await prisma.user.deleteMany();
-
-  const passwordHash = await bcrypt.hash('Password123!', 10);
-
-  const [onion, wheat, soybean, cotton, turmeric] = await Promise.all([
-    prisma.crop.create({ data: { name: 'Onion', localName: 'Kanda', category: 'vegetable' } }),
-    prisma.crop.create({ data: { name: 'Wheat', localName: 'Gehu', category: 'cereal' } }),
-    prisma.crop.create({ data: { name: 'Soybean', localName: 'Soyabean', category: 'oilseed' } }),
-    prisma.crop.create({ data: { name: 'Cotton', localName: 'Kapas', category: 'fibre' } }),
-    prisma.crop.create({ data: { name: 'Turmeric', localName: 'Haldi', category: 'spice' } }),
+  const [farmerHash, buyerHash, adminHash, fpoHash] = await Promise.all([
+    bcrypt.hash('Farmer@123', BCRYPT_ROUNDS),
+    bcrypt.hash('Buyer@123', BCRYPT_ROUNDS),
+    bcrypt.hash('Admin@123', BCRYPT_ROUNDS),
+    bcrypt.hash('Fpo@123', BCRYPT_ROUNDS),
   ]);
 
-  const [lasalgaon, nashik, pune, indore, nagpur] = await Promise.all([
-    prisma.market.create({
-      data: {
-        name: 'Lasalgaon APMC',
-        mandiCode: 'MH-LSG',
-        district: 'Nashik',
-        state: 'Maharashtra',
-        latitude: 20.1426,
-        longitude: 74.2291,
-      },
-    }),
-    prisma.market.create({
-      data: {
-        name: 'Nashik APMC',
-        mandiCode: 'MH-NSK',
-        district: 'Nashik',
-        state: 'Maharashtra',
-        latitude: 19.9975,
-        longitude: 73.7898,
-      },
-    }),
-    prisma.market.create({
-      data: {
-        name: 'Pune Market Yard',
-        mandiCode: 'MH-PUN',
-        district: 'Pune',
-        state: 'Maharashtra',
-        latitude: 18.5204,
-        longitude: 73.8567,
-      },
-    }),
-    prisma.market.create({
-      data: {
-        name: 'Indore Krishi Upaj Mandi',
-        mandiCode: 'MP-IDR',
-        district: 'Indore',
-        state: 'Madhya Pradesh',
-        latitude: 22.7196,
-        longitude: 75.8577,
-      },
-    }),
-    prisma.market.create({
-      data: {
-        name: 'Nagpur APMC',
-        mandiCode: 'MH-NGP',
-        district: 'Nagpur',
-        state: 'Maharashtra',
-        latitude: 21.1458,
-        longitude: 79.0882,
-      },
-    }),
-  ]);
+  const crops = {};
+  for (const row of [
+    { name: 'Wheat', localName: 'Ghau', category: 'cereal' },
+    { name: 'Rice', localName: 'Chokha / Dangar', category: 'cereal' },
+    { name: 'Cotton', localName: 'Kapas', category: 'fibre' },
+    { name: 'Soybean', localName: 'Soyabean', category: 'oilseed' },
+    { name: 'Onion', localName: 'Dungli', category: 'vegetable' },
+    { name: 'Tomato', localName: 'Tameta', category: 'vegetable' },
+    { name: 'Maize', localName: 'Makai', category: 'cereal' },
+  ]) {
+    crops[row.name] = await upsertCrop(row);
+  }
 
-  // Onion: rising (wait may pay off). Wheat: falling (sell now). Soybean: flat.
-  const series = [
-    { cropId: onion.id, start: 1480, delta: 22, markets: [lasalgaon, nashik, pune] },
-    { cropId: wheat.id, start: 2420, delta: -18, markets: [pune, nagpur, indore] },
-    { cropId: soybean.id, start: 4300, delta: 2, markets: [indore, nagpur] },
-    { cropId: cotton.id, start: 6800, delta: -8, markets: [nagpur, nashik] },
-    { cropId: turmeric.id, start: 12500, delta: 40, markets: [nashik, pune] },
+  const marketSpecs = [
+    { name: 'Unjha APMC', mandiCode: 'GJ-UNJ', district: 'Mehsana', state: 'Gujarat', latitude: 23.8037, longitude: 72.391 },
+    { name: 'Mehsana APMC', mandiCode: 'GJ-MHS', district: 'Mehsana', state: 'Gujarat', latitude: 23.588, longitude: 72.3693 },
+    { name: 'Ahmedabad Jamalpur APMC', mandiCode: 'GJ-AMD', district: 'Ahmedabad', state: 'Gujarat', latitude: 23.014, longitude: 72.588 },
+    { name: 'Rajkot APMC', mandiCode: 'GJ-RAJ', district: 'Rajkot', state: 'Gujarat', latitude: 22.3039, longitude: 70.8022 },
+    { name: 'Vadodara APMC', mandiCode: 'GJ-VAD', district: 'Vadodara', state: 'Gujarat', latitude: 22.3072, longitude: 73.1812 },
+    { name: 'Surat APMC', mandiCode: 'GJ-SUR', district: 'Surat', state: 'Gujarat', latitude: 21.1702, longitude: 72.8311 },
+    { name: 'Bhavnagar APMC', mandiCode: 'GJ-BHV', district: 'Bhavnagar', state: 'Gujarat', latitude: 21.7645, longitude: 72.1519 },
+    { name: 'Indore Krishi Upaj Mandi', mandiCode: 'MP-IDR', district: 'Indore', state: 'Madhya Pradesh', latitude: 22.7196, longitude: 75.8577 },
   ];
 
-  const priceRows = [];
+  const markets = {};
+  for (const spec of marketSpecs) {
+    markets[spec.mandiCode] = await prisma.market.upsert({
+      where: { mandiCode: spec.mandiCode },
+      update: spec,
+      create: spec,
+    });
+  }
+
+  /**
+   * Price paths chosen to exercise sell-timing rules:
+   *   Onion / Soybean  → rising  (WAIT / SELL_PART_STORE_REST if storage on)
+   *   Rice             → mild rise (WAIT_FEW_DAYS with storage)
+   *   Wheat / Tomato / Maize / Cotton → flat or falling (SELL_NOW)
+   */
+  const series = [
+    { crop: 'Onion', start: 1520, delta: 28, codes: ['GJ-UNJ', 'GJ-MHS', 'GJ-AMD', 'GJ-VAD'] },
+    { crop: 'Soybean', start: 4180, delta: 22, codes: ['GJ-RAJ', 'GJ-AMD', 'MP-IDR'] },
+    { crop: 'Rice', start: 1980, delta: 5, codes: ['GJ-SUR', 'GJ-VAD', 'GJ-AMD'] },
+    { crop: 'Wheat', start: 2480, delta: -16, codes: ['GJ-UNJ', 'GJ-MHS', 'GJ-AMD', 'MP-IDR'] },
+    { crop: 'Tomato', start: 1680, delta: -24, codes: ['GJ-AMD', 'GJ-VAD', 'GJ-SUR'] },
+    { crop: 'Maize', start: 2050, delta: -12, codes: ['GJ-MHS', 'GJ-RAJ', 'GJ-BHV'] },
+    { crop: 'Cotton', start: 7050, delta: 1, codes: ['GJ-RAJ', 'GJ-BHV', 'GJ-SUR'] },
+  ];
+
   for (const s of series) {
-    for (const market of s.markets) {
+    const cropId = crops[s.crop].id;
+    for (const code of s.codes) {
+      const market = markets[code];
       const modal = priceSeries(s.start, s.delta);
-      modal.forEach((modalPrice, i) => {
-        priceRows.push({
-          marketId: market.id,
-          cropId: s.cropId,
-          date: daysAgo(DAYS - 1 - i),
-          minPrice: modalPrice - 80,
-          maxPrice: modalPrice + 90,
-          modalPrice,
-          arrivals: 800 + i * 15,
+      for (let i = 0; i < modal.length; i += 1) {
+        const modalPrice = modal[i];
+        const date = utcDay(PRICE_DAYS - 1 - i);
+        await prisma.marketPrice.upsert({
+          where: {
+            marketId_cropId_date: { marketId: market.id, cropId, date },
+          },
+          update: {
+            minPrice: modalPrice - 80,
+            maxPrice: modalPrice + 90,
+            modalPrice,
+            arrivals: 600 + i * 20,
+          },
+          create: {
+            marketId: market.id,
+            cropId,
+            date,
+            minPrice: modalPrice - 80,
+            maxPrice: modalPrice + 90,
+            modalPrice,
+            arrivals: 600 + i * 20,
+          },
         });
+      }
+    }
+  }
+
+  const farmer = await upsertUser({
+    name: 'Ramesh Patel',
+    email: 'farmer@mandimitra.com',
+    phone: '9876500001',
+    password: farmerHash,
+    role: 'FARMER',
+    village: 'Unjha',
+    district: 'Mehsana',
+    state: 'Gujarat',
+    latitude: 23.8037,
+    longitude: 72.391,
+    address: 'Unjha, Mehsana, Gujarat',
+  });
+
+  const farmer2 = await upsertUser({
+    name: 'Kiran Desai',
+    email: 'farmer2@mandimitra.com',
+    phone: '9876500002',
+    password: farmerHash,
+    role: 'FARMER',
+    village: 'Visnagar',
+    district: 'Mehsana',
+    state: 'Gujarat',
+    latitude: 23.7,
+    longitude: 72.552,
+    address: 'Visnagar, Mehsana, Gujarat',
+  });
+
+  const fpoLead = await upsertUser({
+    name: 'Sunita Chaudhary',
+    email: 'fpo@mandimitra.com',
+    phone: '9876500003',
+    password: fpoHash,
+    role: 'FPO',
+    district: 'Mehsana',
+    state: 'Gujarat',
+    latitude: 23.588,
+    longitude: 72.3693,
+    address: 'Mehsana, Gujarat',
+  });
+
+  await upsertUser({
+    name: 'MandiMitra Admin',
+    email: 'admin@mandimitra.com',
+    phone: '9876500000',
+    password: adminHash,
+    role: 'ADMIN',
+    district: 'Ahmedabad',
+    state: 'Gujarat',
+  });
+
+  let fpo = await prisma.fpo.findFirst({ where: { name: 'Mehsana Farmers Producer Company' } });
+  if (fpo) {
+    fpo = await prisma.fpo.update({
+      where: { id: fpo.id },
+      data: { leadUserId: fpoLead.id, district: 'Mehsana', state: 'Gujarat' },
+    });
+  } else {
+    fpo = await prisma.fpo.create({
+      data: {
+        name: 'Mehsana Farmers Producer Company',
+        leadUserId: fpoLead.id,
+        district: 'Mehsana',
+        state: 'Gujarat',
+      },
+    });
+  }
+
+  for (const userId of [farmer.id, farmer2.id, fpoLead.id]) {
+    await prisma.fpoMember.upsert({
+      where: { fpoId_userId: { fpoId: fpo.id, userId } },
+      update: {},
+      create: { fpoId: fpo.id, userId },
+    });
+  }
+
+  /**
+   * Buyers placed so listed price ≠ net realisation:
+   * local Unjha buyer (demo) is close + high trust;
+   * Indore posts the highest onion ticket but ~400 km of transport.
+   */
+  const buyerSpecs = [
+    {
+      name: 'Harshad Patel',
+      email: 'buyer@mandimitra.com',
+      phone: '9876510001',
+      businessName: 'Unjha Patel Agri Traders',
+      gstin: '24AABCU1234A1Z5',
+      minQualityGrade: 'B',
+      onTimePaymentRate: 0.95,
+      avgPaymentDelayDays: 1,
+      totalDealsCompleted: 92,
+      trustScore: 93,
+      latitude: 23.81,
+      longitude: 72.4,
+      district: 'Mehsana',
+      state: 'Gujarat',
+      address: 'APMC Yard, Unjha, Gujarat',
+      offers: {
+        Onion: { price: 1780, qty: 60, minGrade: 'B' },
+        Wheat: { price: 2360, qty: 80, minGrade: 'B' },
+        Cotton: { price: 6980, qty: 40, minGrade: 'B' },
+        Soybean: { price: 4420, qty: 50, minGrade: 'B' },
+        Rice: { price: 2040, qty: 40, minGrade: 'B' },
+        Tomato: { price: 1420, qty: 30, minGrade: 'C' },
+        Maize: { price: 1980, qty: 50, minGrade: 'C' },
+      },
+    },
+    {
+      name: 'Imran Qureshi',
+      email: 'buyer.indore@mandimitra.com',
+      phone: '9876510002',
+      businessName: 'Indore Grain Hub',
+      gstin: '23AABCI5678B1Z2',
+      minQualityGrade: 'C',
+      onTimePaymentRate: 0.61,
+      avgPaymentDelayDays: 12,
+      totalDealsCompleted: 18,
+      trustScore: 46,
+      latitude: 22.7196,
+      longitude: 75.8577,
+      district: 'Indore',
+      state: 'Madhya Pradesh',
+      address: 'Krishi Upaj Mandi, Indore',
+      offers: {
+        Onion: { price: 1960, qty: 80, minGrade: 'C' },
+        Wheat: { price: 2490, qty: 100, minGrade: 'C' },
+        Soybean: { price: 4580, qty: 70, minGrade: 'C' },
+      },
+    },
+    {
+      name: 'Nidhi Shah',
+      email: 'buyer.ahmedabad@mandimitra.com',
+      phone: '9876510003',
+      businessName: 'Ahmedabad Fresh Mandi Pvt Ltd',
+      gstin: '24AABCA9012C1Z8',
+      minQualityGrade: 'A',
+      onTimePaymentRate: 0.82,
+      avgPaymentDelayDays: 4,
+      totalDealsCompleted: 44,
+      trustScore: 74,
+      latitude: 23.0225,
+      longitude: 72.5714,
+      district: 'Ahmedabad',
+      state: 'Gujarat',
+      address: 'Jamalpur APMC, Ahmedabad',
+      offers: {
+        Onion: { price: 1880, qty: 50, minGrade: 'A' },
+        Tomato: { price: 1550, qty: 25, minGrade: 'A' },
+        Wheat: { price: 2410, qty: 60, minGrade: 'A' },
+        Rice: { price: 2120, qty: 40, minGrade: 'A' },
+      },
+    },
+    {
+      name: 'Jignesh Joshi',
+      email: 'buyer.rajkot@mandimitra.com',
+      phone: '9876510004',
+      businessName: 'Rajkot Cotton & Oilseeds Co',
+      gstin: '24AABCJ3456D1Z1',
+      minQualityGrade: 'B',
+      onTimePaymentRate: 0.89,
+      avgPaymentDelayDays: 2.2,
+      totalDealsCompleted: 67,
+      trustScore: 85,
+      latitude: 22.3039,
+      longitude: 70.8022,
+      district: 'Rajkot',
+      state: 'Gujarat',
+      address: 'APMC Rajkot',
+      offers: {
+        Cotton: { price: 7220, qty: 80, minGrade: 'B' },
+        Soybean: { price: 4490, qty: 60, minGrade: 'B' },
+        Maize: { price: 2010, qty: 55, minGrade: 'B' },
+        Wheat: { price: 2330, qty: 70, minGrade: 'B' },
+      },
+    },
+    {
+      name: 'Farhan Shaikh',
+      email: 'buyer.surat@mandimitra.com',
+      phone: '9876510005',
+      businessName: 'Surat Quick Buy Traders',
+      gstin: '24AABCS7890E1Z4',
+      minQualityGrade: 'C',
+      onTimePaymentRate: 0.54,
+      avgPaymentDelayDays: 15,
+      totalDealsCompleted: 11,
+      trustScore: 38,
+      latitude: 21.1702,
+      longitude: 72.8311,
+      district: 'Surat',
+      state: 'Gujarat',
+      address: 'Surat APMC',
+      offers: {
+        Onion: { price: 1910, qty: 45, minGrade: 'C' },
+        Tomato: { price: 1600, qty: 20, minGrade: 'C' },
+        Rice: { price: 2080, qty: 35, minGrade: 'C' },
+      },
+    },
+  ];
+
+  const validUntil = new Date();
+  validUntil.setUTCDate(validUntil.getUTCDate() + 10);
+
+  for (const spec of buyerSpecs) {
+    const { offers, ...userFields } = spec;
+    const user = await upsertUser({
+      name: userFields.name,
+      email: userFields.email,
+      phone: userFields.phone,
+      password: buyerHash,
+      role: 'BUYER',
+      latitude: userFields.latitude,
+      longitude: userFields.longitude,
+      district: userFields.district,
+      state: userFields.state,
+      address: userFields.address,
+    });
+
+    const buyer = await prisma.buyer.upsert({
+      where: { userId: user.id },
+      update: {
+        businessName: userFields.businessName,
+        gstin: userFields.gstin,
+        minQualityGrade: userFields.minQualityGrade,
+        onTimePaymentRate: userFields.onTimePaymentRate,
+        avgPaymentDelayDays: userFields.avgPaymentDelayDays,
+        totalDealsCompleted: userFields.totalDealsCompleted,
+        trustScore: userFields.trustScore,
+        latitude: userFields.latitude,
+        longitude: userFields.longitude,
+        address: userFields.address,
+        district: userFields.district,
+        state: userFields.state,
+      },
+      create: {
+        userId: user.id,
+        businessName: userFields.businessName,
+        gstin: userFields.gstin,
+        minQualityGrade: userFields.minQualityGrade,
+        onTimePaymentRate: userFields.onTimePaymentRate,
+        avgPaymentDelayDays: userFields.avgPaymentDelayDays,
+        totalDealsCompleted: userFields.totalDealsCompleted,
+        trustScore: userFields.trustScore,
+        latitude: userFields.latitude,
+        longitude: userFields.longitude,
+        address: userFields.address,
+        district: userFields.district,
+        state: userFields.state,
+      },
+    });
+
+    for (const [cropName, offer] of Object.entries(offers)) {
+      await upsertOpenOffer({
+        buyerId: buyer.id,
+        cropId: crops[cropName].id,
+        quantity: offer.qty,
+        offerPrice: offer.price,
+        minGrade: offer.minGrade,
+        validUntil,
+        pickupLocation: `${userFields.district}, ${userFields.state}`,
+        latitude: userFields.latitude,
+        longitude: userFields.longitude,
+        status: 'OPEN',
       });
     }
   }
-  await prisma.marketPrice.createMany({ data: priceRows });
 
-  const farmer = await prisma.user.create({
-    data: {
-      name: 'Ramesh Patil',
-      email: 'farmer@mandimitra.test',
-      phone: '9000000001',
-      password: passwordHash,
-      role: 'FARMER',
-      village: 'Niphad',
-      district: 'Nashik',
-      state: 'Maharashtra',
-      latitude: 20.0793,
-      longitude: 74.1102,
-      address: 'Niphad, Nashik, Maharashtra',
-    },
+  const lotBase = {
+    farmerId: farmer.id,
+    fpoId: fpo.id,
+    location: 'Unjha, Mehsana, Gujarat',
+    latitude: 23.8037,
+    longitude: 72.391,
+  };
+
+  await upsertLot({
+    ...lotBase,
+    cropId: crops.Onion.id,
+    quantity: 40,
+    qualityGrade: 'A',
+    harvestDate: utcDay(3),
+    hasStorage: true,
+    storageDaysAvailable: 12,
+    status: 'LISTED',
+    notes: `${DEMO_TAG} Onion — storage on, rising market → expect WAIT / PARTIAL`,
   });
 
-  const fpoLead = await prisma.user.create({
-    data: {
-      name: 'Sunita Kale',
-      email: 'fpo@mandimitra.test',
-      phone: '9000000002',
-      password: passwordHash,
-      role: 'FPO',
-      district: 'Nashik',
-      state: 'Maharashtra',
-      latitude: 20.0059,
-      longitude: 73.7799,
-    },
+  await upsertLot({
+    ...lotBase,
+    cropId: crops.Wheat.id,
+    quantity: 55,
+    qualityGrade: 'B',
+    harvestDate: utcDay(8),
+    hasStorage: false,
+    storageDaysAvailable: 0,
+    status: 'LISTED',
+    notes: `${DEMO_TAG} Wheat — no storage, falling market → expect SELL_NOW`,
   });
 
-  const fpo = await prisma.fpo.create({
-    data: {
-      name: 'Nashik Onion Growers FPO',
-      leadUserId: fpoLead.id,
-      district: 'Nashik',
-      state: 'Maharashtra',
-      members: {
-        create: [{ userId: farmer.id }, { userId: fpoLead.id }],
-      },
-    },
+  await upsertLot({
+    ...lotBase,
+    cropId: crops.Soybean.id,
+    quantity: 30,
+    qualityGrade: 'A',
+    harvestDate: utcDay(4),
+    hasStorage: true,
+    storageDaysAvailable: 14,
+    status: 'LISTED',
+    notes: `${DEMO_TAG} Soybean — storage on, strong rise → expect SELL_PART_STORE_REST`,
   });
 
-  const buyerSpecs = [
-    {
-      name: 'Vikram Traders',
-      email: 'buyer1@mandimitra.test',
-      phone: '9100000001',
-      businessName: 'Vikram Agri Traders',
-      onTimePaymentRate: 0.94,
-      avgPaymentDelayDays: 1.2,
-      totalDealsCompleted: 86,
-      trustScore: 91,
-      minQualityGrade: 'B',
-      latitude: 20.14,
-      longitude: 74.23,
-      district: 'Nashik',
-      state: 'Maharashtra',
-      onionPrice: 1720,
-      wheatPrice: 2280,
-    },
-    {
-      name: 'Pune Fresh Mandi Pvt Ltd',
-      email: 'buyer2@mandimitra.test',
-      phone: '9100000002',
-      businessName: 'Pune Fresh Mandi',
-      onTimePaymentRate: 0.81,
-      avgPaymentDelayDays: 4.5,
-      totalDealsCompleted: 42,
-      trustScore: 72,
-      minQualityGrade: 'A',
-      latitude: 18.52,
-      longitude: 73.86,
-      district: 'Pune',
-      state: 'Maharashtra',
-      onionPrice: 1850,
-      wheatPrice: 2350,
-    },
-    {
-      name: 'Indore Grain Hub',
-      email: 'buyer3@mandimitra.test',
-      phone: '9100000003',
-      businessName: 'Indore Grain Hub',
-      onTimePaymentRate: 0.62,
-      avgPaymentDelayDays: 11,
-      totalDealsCompleted: 19,
-      trustScore: 48,
-      minQualityGrade: 'C',
-      latitude: 22.72,
-      longitude: 75.86,
-      district: 'Indore',
-      state: 'Madhya Pradesh',
-      onionPrice: 1900,
-      wheatPrice: 2400,
-    },
-    {
-      name: 'Nagpur Cotton & Pulses Co',
-      email: 'buyer4@mandimitra.test',
-      phone: '9100000004',
-      businessName: 'Nagpur Cotton & Pulses Co',
-      onTimePaymentRate: 0.88,
-      avgPaymentDelayDays: 2.4,
-      totalDealsCompleted: 61,
-      trustScore: 83,
-      minQualityGrade: 'B',
-      latitude: 21.15,
-      longitude: 79.09,
-      district: 'Nagpur',
-      state: 'Maharashtra',
-      onionPrice: 1680,
-      wheatPrice: 2320,
-    },
-  ];
-
-  const buyers = [];
-  for (const spec of buyerSpecs) {
-    const user = await prisma.user.create({
-      data: {
-        name: spec.name,
-        email: spec.email,
-        phone: spec.phone,
-        password: passwordHash,
-        role: 'BUYER',
-        district: spec.district,
-        state: spec.state,
-        latitude: spec.latitude,
-        longitude: spec.longitude,
-      },
-    });
-    const buyer = await prisma.buyer.create({
-      data: {
-        userId: user.id,
-        businessName: spec.businessName,
-        minQualityGrade: spec.minQualityGrade,
-        onTimePaymentRate: spec.onTimePaymentRate,
-        avgPaymentDelayDays: spec.avgPaymentDelayDays,
-        totalDealsCompleted: spec.totalDealsCompleted,
-        trustScore: spec.trustScore,
-        latitude: spec.latitude,
-        longitude: spec.longitude,
-        district: spec.district,
-        state: spec.state,
-      },
-    });
-    buyers.push({ ...buyer, onionPrice: spec.onionPrice, wheatPrice: spec.wheatPrice });
-  }
-
-  await prisma.user.create({
-    data: {
-      name: 'Admin',
-      email: 'admin@mandimitra.test',
-      phone: '9990000000',
-      password: passwordHash,
-      role: 'ADMIN',
-    },
+  await upsertLot({
+    ...lotBase,
+    cropId: crops.Tomato.id,
+    quantity: 12,
+    qualityGrade: 'A',
+    harvestDate: utcDay(1),
+    hasStorage: true,
+    storageDaysAvailable: 4,
+    status: 'LISTED',
+    notes: `${DEMO_TAG} Tomato — perishable, falling market → expect SELL_NOW`,
   });
 
-  const lot = await prisma.lot.create({
-    data: {
-      farmerId: farmer.id,
-      fpoId: fpo.id,
-      cropId: onion.id,
-      quantity: 40,
-      qualityGrade: 'A',
-      harvestDate: daysAgo(2),
-      location: 'Niphad, Nashik, Maharashtra',
-      latitude: 20.0793,
-      longitude: 74.1102,
-      hasStorage: true,
-      storageDaysAvailable: 12,
-      status: 'LISTED',
-    },
+  await upsertLot({
+    ...lotBase,
+    cropId: crops.Cotton.id,
+    quantity: 25,
+    qualityGrade: 'B',
+    harvestDate: utcDay(6),
+    hasStorage: true,
+    storageDaysAvailable: 20,
+    status: 'LISTED',
+    notes: `${DEMO_TAG} Cotton — flat trend → expect SELL_NOW`,
   });
 
-  const validUntil = new Date();
-  validUntil.setDate(validUntil.getDate() + 5);
+  await upsertLot({
+    farmerId: farmer2.id,
+    fpoId: fpo.id,
+    cropId: crops.Rice.id,
+    quantity: 18,
+    qualityGrade: 'FAQ',
+    harvestDate: utcDay(5),
+    location: 'Visnagar, Mehsana, Gujarat',
+    latitude: 23.7,
+    longitude: 72.552,
+    hasStorage: true,
+    storageDaysAvailable: 10,
+    status: 'LISTED',
+    notes: `${DEMO_TAG} Rice (member farmer) — mild rise + storage → expect WAIT_FEW_DAYS`,
+  });
 
-  for (const b of buyers) {
-    await prisma.offer.create({
-      data: {
-        buyerId: b.id,
-        cropId: onion.id,
-        quantity: 50,
-        offerPrice: b.onionPrice,
-        minGrade: b.minQualityGrade,
-        validUntil,
-        pickupLocation: `${b.district}, ${b.state}`,
-        latitude: b.latitude,
-        longitude: b.longitude,
-        status: 'OPEN',
-      },
-    });
-    await prisma.offer.create({
-      data: {
-        buyerId: b.id,
-        cropId: wheat.id,
-        quantity: 80,
-        offerPrice: b.wheatPrice,
-        minGrade: b.minQualityGrade,
-        validUntil,
-        pickupLocation: `${b.district}, ${b.state}`,
-        latitude: b.latitude,
-        longitude: b.longitude,
-        status: 'OPEN',
-      },
-    });
-  }
+  await upsertLot({
+    ...lotBase,
+    cropId: crops.Maize.id,
+    quantity: 22,
+    qualityGrade: 'C',
+    harvestDate: utcDay(7),
+    hasStorage: false,
+    storageDaysAvailable: 0,
+    status: 'LISTED',
+    notes: `${DEMO_TAG} Maize — no storage, falling → expect SELL_NOW`,
+  });
 
-  console.log('Seed complete.');
-  console.log('Demo logins (password: Password123!):');
-  console.log('  farmer@mandimitra.test  (FARMER)');
-  console.log('  fpo@mandimitra.test     (FPO)');
-  console.log('  buyer1@mandimitra.test  (BUYER — high trust)');
-  console.log('  admin@mandimitra.test   (ADMIN)');
-  console.log(`Sample lot: ${lot.id} (Onion, 40q, Nashik)`);
+  console.log('\nSeed complete (existing non-demo rows were left untouched).');
+  console.log('\nDemo logins (bcrypt, 10 rounds — same as register):');
+  console.log('  farmer@mandimitra.com              Farmer@123   FARMER  Unjha, Mehsana');
+  console.log('  farmer2@mandimitra.com             Farmer@123   FARMER  Visnagar (FPO member)');
+  console.log('  buyer@mandimitra.com               Buyer@123    BUYER   Unjha — high trust, nearby');
+  console.log('  buyer.indore@mandimitra.com        Buyer@123    BUYER   highest listed price, far');
+  console.log('  buyer.ahmedabad@mandimitra.com     Buyer@123    BUYER   grade A, medium distance');
+  console.log('  buyer.rajkot@mandimitra.com        Buyer@123    BUYER   cotton/oilseeds');
+  console.log('  buyer.surat@mandimitra.com         Buyer@123    BUYER   high price, weak payment history');
+  console.log('  fpo@mandimitra.com                 Fpo@123      FPO');
+  console.log('  admin@mandimitra.com               Admin@123    ADMIN');
+  console.log('\nDecision-engine checks (login as farmer → Sell decision):');
+  console.log('  Onion + storage ON   → WAIT_FEW_DAYS or SELL_PART_STORE_REST');
+  console.log('  Wheat + storage OFF  → SELL_NOW (falling mandi prices)');
+  console.log('  Soybean + storage ON → SELL_PART_STORE_REST');
+  console.log('  Net realisation: Unjha buyer should beat Indore despite a lower onion ticket.');
 }
 
 main()

@@ -2,6 +2,68 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-crop-50 text-slate-900 antialiased;
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-crop-50 font-sans text-slate-900 antialiased transition-colors;
+  }
+  html.dark body {
+    background-color: #020617;
+    color: #f1f5f9;
+  }
+}
+
+@layer components {
+  .mm-card {
+    @apply rounded-2xl border border-crop-100 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900;
+    box-shadow: 0 8px 24px rgba(10, 107, 92, 0.08);
+  }
+  .mm-input {
+    @apply mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-slate-900 outline-none ring-crop-600 transition focus:border-crop-600 focus:ring-2 focus:ring-crop-600/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100;
+  }
+  .mm-btn {
+    @apply inline-flex items-center justify-center rounded-lg bg-crop-700 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-crop-800;
+  }
+  .mm-btn-outline {
+    @apply inline-flex items-center justify-center rounded-lg border border-white/70 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10;
+  }
+  .gov-tricolor {
+    background: linear-gradient(
+      to right,
+      #ff9933 0 33.33%,
+      #ffffff 33.33% 66.66%,
+      #138808 66.66% 100%
+    );
+  }
+  .gov-footer {
+    background-color: #0b1f3a;
+    border-top: 4px solid #ff9933;
+    color: #e2e8f0;
+  }
+  .gov-footer-stripe {
+    background-color: #138808;
+  }
+  .text-gov-navy {
+    color: #0b1f3a;
+  }
+  .text-gov-saffron {
+    color: #ff9933;
+  }
+  .text-gov-india {
+    color: #138808;
+  }
+  .dark .text-gov-navy {
+    color: #f8fafc;
+  }
+  .dark .text-gov-india {
+    color: #6bc4b4;
+  }
+  .gov-nav-link {
+    @apply rounded-md px-3 py-1.5 text-sm font-medium text-white/90 transition hover:bg-white/10 hover:text-white;
+  }
+  .gov-nav-link-active {
+    @apply bg-white/15 text-white;
+  }
 }

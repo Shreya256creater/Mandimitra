@@ -1,45 +1,74 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { decisionApi, marketApi } from '../api/client.js';
+import CropPicker, { matchCrop } from '../components/CropPicker.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useI18n } from '../context/I18nContext.jsx';
 
 export default function SellDecisionForm() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [crops, setCrops] = useState([]);
   const [error, setError] = useState('');
+  const [cropsLoading, setCropsLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
-    cropId: '',
+    cropName: '',
     quantity: 40,
     qualityGrade: 'A',
-    location: user?.address || 'Niphad, Nashik, Maharashtra',
+    location: user?.address || user?.district
+      ? `${user.address || `${user.village || user.district}, ${user.state || 'Gujarat'}`}`
+      : 'Unjha, Mehsana, Gujarat',
     harvestDate: new Date().toISOString().slice(0, 10),
     hasStorage: true,
     storageDaysAvailable: 10,
-    latitude: user?.latitude ?? 20.0793,
-    longitude: user?.longitude ?? 74.1102,
+    latitude: user?.latitude ?? 23.8037,
+    longitude: user?.longitude ?? 72.391,
   });
 
   useEffect(() => {
-    marketApi.crops().then(({ crops: rows }) => {
-      setCrops(rows);
-      if (rows[0]) setForm((f) => ({ ...f, cropId: rows[0].id }));
-    });
-  }, []);
+    let cancelled = false;
+    setCropsLoading(true);
+    marketApi
+      .crops()
+      .then(({ crops: rows }) => {
+        if (cancelled) return;
+        setCrops(rows || []);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message || t('decide.cropsLoadError'));
+      })
+      .finally(() => {
+        if (!cancelled) setCropsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
 
   async function onSubmit(e) {
     e.preventDefault();
     setError('');
+    const cropName = form.cropName.trim();
+    if (cropName.length < 2) {
+      setError(t('decide.cropRequired'));
+      return;
+    }
     setLoading(true);
     try {
+      const matched = matchCrop(crops, cropName);
       const result = await decisionApi.evaluate({
-        ...form,
+        cropId: matched?.id,
+        cropName,
         quantity: Number(form.quantity),
-        storageDaysAvailable: Number(form.storageDaysAvailable),
+        qualityGrade: form.qualityGrade,
+        location: form.location,
+        harvestDate: new Date(form.harvestDate).toISOString(),
+        hasStorage: Boolean(form.hasStorage),
+        storageDaysAvailable: Number(form.storageDaysAvailable) || 0,
         latitude: Number(form.latitude),
         longitude: Number(form.longitude),
-        harvestDate: new Date(form.harvestDate).toISOString(),
       });
       sessionStorage.setItem('mm_last_decision', JSON.stringify(result));
       navigate('/decide/results');
@@ -52,45 +81,36 @@ export default function SellDecisionForm() {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="text-2xl font-bold text-crop-900">Ask MandiMitra where to sell</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        We will rank buyers and mandis by net realisation — listed price minus transport and storage — and
-        attach sell-timing plus buyer trust.
+      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-crop-700 dark:text-crop-300">
+        {t('home.servicesTitle')}
       </p>
+      <h1 className="text-gov-navy mt-1 text-2xl font-bold dark:text-crop-100">{t('decide.title')}</h1>
+      <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{t('decide.subtitle')}</p>
 
-      <form className="mt-6 space-y-4 rounded-2xl border border-crop-100 bg-white p-6 shadow-sm" onSubmit={onSubmit}>
-        <label className="block text-sm">
-          Crop
-          <select
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-            value={form.cropId}
-            onChange={(e) => setForm({ ...form, cropId: e.target.value })}
-            required
-          >
-            {crops.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
+      <form className="mm-card mt-6 space-y-4 p-6" onSubmit={onSubmit}>
+        <CropPicker
+          crops={crops}
+          value={form.cropName}
+          onChange={(cropName) => setForm({ ...form, cropName })}
+          loading={cropsLoading}
+        />
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block text-sm">
-            Quantity (quintals)
+            {t('common.quantity')}
             <input
               type="number"
               min="0.1"
               step="0.1"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              className="mm-input"
               value={form.quantity}
               onChange={(e) => setForm({ ...form, quantity: e.target.value })}
             />
           </label>
           <label className="block text-sm">
-            Quality grade
+            {t('common.qualityGrade')}
             <select
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              className="mm-input"
               value={form.qualityGrade}
               onChange={(e) => setForm({ ...form, qualityGrade: e.target.value })}
             >
@@ -103,9 +123,9 @@ export default function SellDecisionForm() {
         </div>
 
         <label className="block text-sm">
-          Location
+          {t('common.location')}
           <input
-            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+            className="mm-input"
             value={form.location}
             onChange={(e) => setForm({ ...form, location: e.target.value })}
           />
@@ -113,20 +133,20 @@ export default function SellDecisionForm() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block text-sm">
-            Harvest date
+            {t('common.harvestDate')}
             <input
               type="date"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              className="mm-input"
               value={form.harvestDate}
               onChange={(e) => setForm({ ...form, harvestDate: e.target.value })}
             />
           </label>
           <label className="block text-sm">
-            Storage days available
+            {t('common.storageDays')}
             <input
               type="number"
               min="0"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
+              className="mm-input"
               value={form.storageDaysAvailable}
               onChange={(e) => setForm({ ...form, storageDaysAvailable: e.target.value })}
             />
@@ -139,16 +159,16 @@ export default function SellDecisionForm() {
             checked={form.hasStorage}
             onChange={(e) => setForm({ ...form, hasStorage: e.target.checked })}
           />
-          I have usable storage (godown / cold store / farm store)
+          {t('decide.hasStorage')}
         </label>
 
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+        {error && <p className="text-sm text-rose-600 dark:text-rose-400">{error}</p>}
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || form.cropName.trim().length < 2}
           className="rounded-lg bg-crop-700 px-5 py-2.5 font-semibold text-white disabled:opacity-60"
         >
-          {loading ? 'Calculating net realisation…' : 'Evaluate sell options'}
+          {loading ? t('decide.submitting') : t('decide.submit')}
         </button>
       </form>
     </div>

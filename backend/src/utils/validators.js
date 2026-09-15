@@ -19,31 +19,57 @@ export const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-export const evaluateDecisionSchema = z.object({
-  cropId: z.string().uuid(),
-  quantity: z.number().positive(),
-  qualityGrade: z.enum(['A', 'B', 'C', 'FAQ']),
-  location: z.string().min(2),
-  harvestDate: z.string().datetime().or(z.string().min(8)).optional(),
-  hasStorage: z.boolean().default(false),
-  storageDaysAvailable: z.number().int().nonnegative().optional(),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
-});
+const cropRefFields = {
+  cropId: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().uuid().optional(),
+  ),
+  cropName: z.preprocess(
+    (v) => {
+      if (typeof v !== 'string') return v;
+      const trimmed = v.trim();
+      return trimmed === '' ? undefined : trimmed;
+    },
+    z.string().min(2).max(80).optional(),
+  ),
+};
 
-export const createLotSchema = z.object({
-  cropId: z.string().uuid(),
-  quantity: z.number().positive(),
-  qualityGrade: z.enum(['A', 'B', 'C', 'FAQ']),
-  harvestDate: z.string().min(8),
-  location: z.string().min(2),
-  latitude: z.number().optional(),
-  longitude: z.number().optional(),
-  hasStorage: z.boolean().default(false),
-  storageDaysAvailable: z.number().int().nonnegative().optional(),
-  notes: z.string().optional(),
-  fpoId: z.string().uuid().optional(),
-});
+function requireCrop(schema) {
+  return schema.refine((d) => d.cropId || d.cropName, {
+    message: 'Select a crop from the list or type a crop name',
+    path: ['cropName'],
+  });
+}
+
+export const evaluateDecisionSchema = requireCrop(
+  z.object({
+    ...cropRefFields,
+    quantity: z.number().positive(),
+    qualityGrade: z.enum(['A', 'B', 'C', 'FAQ']),
+    location: z.string().min(2),
+    harvestDate: z.string().datetime().or(z.string().min(8)).optional(),
+    hasStorage: z.boolean().default(false),
+    storageDaysAvailable: z.number().int().nonnegative().optional(),
+    latitude: z.number().optional(),
+    longitude: z.number().optional(),
+  }),
+);
+
+export const createLotSchema = requireCrop(
+  z.object({
+    ...cropRefFields,
+    quantity: z.number().positive(),
+    qualityGrade: z.enum(['A', 'B', 'C', 'FAQ']),
+    harvestDate: z.string().min(8),
+    location: z.string().min(2),
+    latitude: z.number().optional(),
+    longitude: z.number().optional(),
+    hasStorage: z.boolean().default(false),
+    storageDaysAvailable: z.number().int().nonnegative().optional(),
+    notes: z.string().optional(),
+    fpoId: z.string().uuid().optional(),
+  }),
+);
 
 export const createOfferSchema = z.object({
   cropId: z.string().uuid(),

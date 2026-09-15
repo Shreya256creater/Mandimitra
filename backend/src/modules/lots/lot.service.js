@@ -1,4 +1,5 @@
 import prisma from '../../config/prisma.js';
+import { findOrCreateCrop } from '../market/market.service.js';
 
 export async function listLots({ farmerId, fpoId, status }) {
   const where = {};
@@ -14,10 +15,12 @@ export async function listLots({ farmerId, fpoId, status }) {
 }
 
 export async function createLot(farmerId, data) {
+  const crop = await findOrCreateCrop({ cropId: data.cropId, cropName: data.cropName });
+
   return prisma.lot.create({
     data: {
       farmerId,
-      cropId: data.cropId,
+      cropId: crop.id,
       quantity: data.quantity,
       qualityGrade: data.qualityGrade,
       harvestDate: new Date(data.harvestDate),

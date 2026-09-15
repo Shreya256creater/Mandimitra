@@ -4,6 +4,49 @@ export async function listCrops() {
   return prisma.crop.findMany({ orderBy: { name: 'asc' } });
 }
 
+/**
+ * Resolve a crop from catalogue id or a typed name (including local names like "Dungli").
+ * Creates a new Crop row when the farmer types a name that is not in the catalogue yet.
+ */
+export async function findOrCreateCrop({ cropId, cropName } = {}) {
+  if (cropId) {
+    const byId = await prisma.crop.findUnique({ where: { id: cropId } });
+    if (byId) return byId;
+  }
+
+  const raw = String(cropName || '').trim();
+  if (!raw) {
+    const err = new Error('Select a crop from the list or type a crop name');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const byName = await prisma.crop.findFirst({
+    where: {
+      OR: [
+        { name: { equals: raw, mode: 'insensitive' } },
+        { localName: { equals: raw, mode: 'insensitive' } },
+      ],
+    },
+  });
+  if (byName) return byName;
+
+  return prisma.crop.create({
+    data: {
+      name: titleCaseCrop(raw),
+      unit: 'quintal',
+    },
+  });
+}
+
+function titleCaseCrop(name) {
+  return name
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
 export async function listMarkets(query = {}) {
   const where = {};
   if (query.state) where.state = query.state;
