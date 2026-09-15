@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, Link, NavLink, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext.jsx';
 import { useI18n } from './context/I18nContext.jsx';
 import { useTheme } from './context/ThemeContext.jsx';
@@ -60,9 +60,7 @@ function LanguageSelect({ variant = 'light' }) {
 
   return (
     <label className="flex items-center gap-1.5">
-      <span className={onTeal ? 'hidden text-[11px] text-white/80 sm:inline' : 'hidden text-[11px] text-slate-600 dark:text-slate-300 sm:inline'}>
-        {t('lang.label')}
-      </span>
+      <span className="sr-only">{t('lang.label')}</span>
       <select
         aria-label={t('lang.label')}
         className={
@@ -89,34 +87,18 @@ function Shell({ children }) {
   const { user, logout } = useAuth();
   const { t } = useI18n();
   const navigate = useNavigate();
+  const location = useLocation();
   const year = new Date().getFullYear();
+  const isHome = location.pathname === '/';
 
   return (
-    <div className="flex min-h-screen flex-col bg-crop-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="flex min-h-screen flex-col bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-2 focus:z-[60] focus:rounded-md focus:bg-white focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-crop-800"
       >
         {t('portal.skip')}
       </a>
-
-      <div className="gov-tricolor h-1.5 w-full" aria-hidden="true" />
-
-      <div className="border-b border-slate-200 bg-[#f4f7f6] text-[11px] text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2 px-4 py-1.5">
-          <p className="font-medium tracking-wide">
-            {t('portal.goi')}
-            <span className="mx-2 text-slate-300 dark:text-slate-700">|</span>
-            {t('portal.ministry')}
-          </p>
-          <div className="flex flex-wrap items-center gap-3">
-            <span>{t('portal.accessibility')}</span>
-            <span className="hidden sm:inline">{t('portal.help')}</span>
-            <span>{t('portal.contact')}</span>
-            <LanguageSelect />
-          </div>
-        </div>
-      </div>
 
       <header className="border-b border-crop-100 bg-white dark:border-slate-800 dark:bg-slate-900">
         <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3">
@@ -143,6 +125,9 @@ function Shell({ children }) {
             <NavLink to="/" end className={navClass}>
               {t('nav.home')}
             </NavLink>
+            <a href="/#features" className="gov-nav-link">
+              {t('nav.features')}
+            </a>
             <NavLink to="/decide" className={navClass}>
               {t('nav.sellDecision')}
             </NavLink>
@@ -163,6 +148,7 @@ function Shell({ children }) {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <LanguageSelect variant="teal" />
             <ThemeToggle variant="teal" />
             {user ? (
               <button
@@ -187,7 +173,10 @@ function Shell({ children }) {
         </div>
       </nav>
 
-      <main id="main-content" className="mx-auto w-full max-w-7xl flex-1 px-4 py-8">
+      <main
+        id="main-content"
+        className={isHome ? 'w-full flex-1' : 'mx-auto w-full max-w-7xl flex-1 px-4 py-8'}
+      >
         {children}
       </main>
 
@@ -202,6 +191,11 @@ function Shell({ children }) {
           <div>
             <h2 className="text-gov-saffron text-xs font-semibold uppercase tracking-[0.16em]">{t('portal.services')}</h2>
             <ul className="mt-3 space-y-2 text-sm">
+              <li>
+                <Link to="/#features" className="hover:text-white">
+                  {t('nav.features')}
+                </Link>
+              </li>
               <li>
                 <Link to="/decide" className="hover:text-white">
                   {t('nav.sellDecision')}
@@ -237,7 +231,6 @@ function Shell({ children }) {
             </p>
           </div>
         </div>
-        <div className="gov-footer-stripe h-1.5 w-full" aria-hidden="true" />
       </footer>
     </div>
   );

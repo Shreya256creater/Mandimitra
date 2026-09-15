@@ -7,7 +7,7 @@
     scroll-behavior: smooth;
   }
   body {
-    @apply bg-crop-50 font-sans text-slate-900 antialiased transition-colors;
+    @apply bg-white font-sans text-slate-900 antialiased transition-colors;
   }
   html.dark body {
     background-color: #020617;
@@ -42,9 +42,6 @@
     border-top: 4px solid #ff9933;
     color: #e2e8f0;
   }
-  .gov-footer-stripe {
-    background-color: #138808;
-  }
   .text-gov-navy {
     color: #0b1f3a;
   }
@@ -65,5 +62,23 @@
   }
   .gov-nav-link-active {
     @apply bg-white/15 text-white;
+  }
+  .farm-olive {
+    background-color: #243018;
+    color: #f4ead6;
+  }
+  .farm-olive-deep {
+    background-color: #1c2612;
+    color: #f4ead6;
+  }
+  .farm-gold {
+    color: #d7c07a;
+  }
+  .farm-panel {
+    border: 1px solid rgba(215, 192, 122, 0.45);
+    border-radius: 1.5rem;
+  }
+  .farm-photo {
+    @apply h-full w-full rounded-3xl;
   }
 }

@@ -529,7 +529,7 @@ async function main() {
   console.log('\nSeed complete (existing non-demo rows were left untouched).');
   console.log('\nDemo logins (bcrypt, 10 rounds — same as register):');
   console.log('  farmer@mandimitra.com              Farmer@123   FARMER  Unjha, Mehsana');
-  console.log('  farmer2@mandimitra.com             Farmer@123   FARMER  Visnagar (FPO member)');
+  console.log('  farmer2@mandimitra.com             Farmer2@123   FARMER  Visnagar (FPO member)');
   console.log('  buyer@mandimitra.com               Buyer@123    BUYER   Unjha — high trust, nearby');
   console.log('  buyer.indore@mandimitra.com        Buyer@123    BUYER   highest listed price, far');
   console.log('  buyer.ahmedabad@mandimitra.com     Buyer@123    BUYER   grade A, medium distance');
